@@ -31,10 +31,8 @@ def check_executable_hardlinks(relinker, work):
                     try:
                         result = subprocess.run([str(relinker), *command], cwd=case,
                                                 capture_output=True, text=True, timeout=20)
-                        assert result.returncode == 2 and (
-                            "output would overwrite" in result.stderr or
-                            readonly and "Cannot compare read-only output identities" in result.stderr
-                        ), (windows, output_name, input_name, readonly, result.stdout, result.stderr)
+                        assert result.returncode == 2 and "output would overwrite" in result.stderr, (
+                            windows, output_name, input_name, readonly, result.stdout, result.stderr)
                         for path, original in inputs.items():
                             assert path.read_bytes() == original, path
                         for path in outputs.values():

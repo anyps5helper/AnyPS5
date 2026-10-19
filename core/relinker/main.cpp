@@ -17,6 +17,7 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #ifdef _WIN32
@@ -121,24 +122,30 @@ private:
 
 #endif
 
+#ifdef _WIN32
+
+bool SameWindowsFile(const std::filesystem::path& first, const std::filesystem::path& second) {
+    const auto identity = [](const std::filesystem::path& path) {
+        const HANDLE handle = CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+        if (handle == INVALID_HANDLE_VALUE)
+            throw Domain::RelinkerException("Cannot compare output identities: " + Io::Utf8Path(path));
+        BY_HANDLE_FILE_INFORMATION information;
+        if (!GetFileInformationByHandle(handle, &information)) {
+            CloseHandle(handle);
+            throw Domain::RelinkerException("Cannot compare output identities: " + Io::Utf8Path(path));
+        }
+        CloseHandle(handle);
+        return std::make_tuple(information.dwVolumeSerialNumber, information.nFileIndexHigh, information.nFileIndexLow);
+    };
+    return identity(first) == identity(second);
+}
+
+#endif
+
 bool SameOutputFile(const std::filesystem::path& first, const std::filesystem::path& second) {
     if (std::filesystem::equivalent(first, second)) return true;
 #ifdef _WIN32
-    if (std::filesystem::status(first).permissions() != std::filesystem::status(second).permissions() &&
-        std::filesystem::hard_link_count(first) > 1 && std::filesystem::hard_link_count(second) > 1) {
-        for (const auto& path : {first, second}) {
-            if ((std::filesystem::status(path).permissions() & std::filesystem::perms::owner_write) == std::filesystem::perms::none)
-                throw Domain::RelinkerException("Cannot compare read-only output identities: " + Io::Utf8Path(path));
-        }
-        OutputIdentityDirectory firstDirectory(first.parent_path());
-        OutputIdentityDirectory secondDirectory(second.parent_path());
-        std::filesystem::create_hard_link(first, firstDirectory.GetPath());
-        std::filesystem::create_hard_link(second, secondDirectory.GetPath());
-        const bool same = std::filesystem::equivalent(firstDirectory.GetPath(), secondDirectory.GetPath());
-        secondDirectory.Remove();
-        firstDirectory.Remove();
-        return same;
-    }
+    return SameWindowsFile(first, second);
 #endif
     return false;
 }

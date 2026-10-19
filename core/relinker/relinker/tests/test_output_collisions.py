@@ -168,7 +168,7 @@ def main():
             try:
                 result = subprocess.run([str(relinker), *command], cwd=case,
                                         capture_output=True, text=True, timeout=20)
-                assert result.returncode == 2 and "Cannot compare read-only output identities" in result.stderr, (
+                assert result.returncode == 2 and "Output paths collide" in result.stderr, (
                     result.stdout, result.stderr)
                 assert output.read_bytes() == b"previous output"
                 assert paths["module"].read_bytes() == b"previous output"
@@ -176,6 +176,21 @@ def main():
                 assert not list(case.rglob(".anyps5-output-identity-*"))
             finally:
                 output.chmod(stat.S_IWRITE)
+        case = work / "readonly-distinct-identity"
+        command, paths, inputs = prepare(case, True)
+        source = case / "input.elf"
+        source_link = case / "input.elf.link"
+        os.link(source, source_link)
+        source.chmod(stat.S_IREAD)
+        try:
+            result = subprocess.run([str(relinker), *command], cwd=case,
+                                    capture_output=True, text=True, timeout=20)
+            assert result.returncode == 0, (result.stdout, result.stderr)
+            assert paths["executable"].read_bytes().startswith(b"MZ")
+            assert source.read_bytes() == main_fixture()
+            assert not list(case.rglob(".anyps5-output-identity-*"))
+        finally:
+            source.chmod(stat.S_IREAD | stat.S_IWRITE)
     print(f"Output collision tests passed: {checked} hard-link pairs, direct paths, and identity controls")
 
 
